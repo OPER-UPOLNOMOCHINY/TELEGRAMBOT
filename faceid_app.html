@@ -144,10 +144,10 @@
         <div class="countdown" id="countdown"></div>
         
         <div>
-            <button class="button" id="startBtn" onclick="startRecording()">
+            <button class="button" id="startBtn">
                 🎥 Начать запись
             </button>
-            <button class="button" id="stopBtn" onclick="stopRecording()" disabled style="display: none;">
+            <button class="button" id="stopBtn" disabled style="display: none;">
                 ⏹ Остановить
             </button>
         </div>
@@ -305,25 +305,11 @@
                 console.log(`Размер видео: ${(blob.size / 1024).toFixed(2)} KB`);
                 
                 // ПРОБЛЕМА: Telegram Web App sendData() имеет ограничение ~64KB
-                // РЕШЕНИЕ: Отправляем видео как файл через Bot API вместо sendData()
+                // РЕШЕНИЕ: Отправляем через sendData только маленькие видео, иначе просим отправить вручную
                 
-                // Конвертируем blob в File для отправки
-                const videoFile = new File([blob], 'faceid_video.webm', { type: 'video/webm' });
-                
-                // Используем Telegram Web App API для отправки файла
-                // Это позволяет отправлять файлы до 50MB вместо 64KB через sendData
                 if (!tg || !tg.ready) {
                     throw new Error('Telegram Web App API не доступен');
                 }
-                
-                // Создаем FormData для отправки файла
-                const formData = new FormData();
-                formData.append('video', videoFile);
-                
-                // Получаем bot token из initData (если доступен) или используем альтернативный метод
-                // Альтернатива: отправляем через sendData только если маленькое, иначе просим отправить вручную
-                
-                const maxSizeForSendData = 50 * 1024; // 50KB для sendData
                 
                 // Проверяем размер для sendData (лимит ~64KB, но base64 увеличивает на 33%)
                 const maxSizeForSendData = 40 * 1024; // 40KB для безопасности
@@ -411,6 +397,14 @@
             status.style.display = 'block';
             status.className = 'status ' + type;
         }
+        
+        // Привязываем обработчики событий после объявления функций
+        startBtn.addEventListener('click', startRecording);
+        stopBtn.addEventListener('click', stopRecording);
+        
+        // Делаем функции глобальными для совместимости
+        window.startRecording = startRecording;
+        window.stopRecording = stopRecording;
         
         // Обработка сообщений от бота
         tg.onEvent('viewportChanged', () => {
