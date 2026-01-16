@@ -631,7 +631,18 @@ def main():
                 return
                 
             web_app_data = update.message.web_app_data.data
-            data = json.loads(web_app_data)
+            
+            if not web_app_data:
+                await update.message.reply_text("❌ Данные от мини-приложения пусты")
+                return
+            
+            # Парсим JSON данные
+            try:
+                data = json.loads(web_app_data)
+            except json.JSONDecodeError as e:
+                logger.error(f"Ошибка парсинга JSON: {e}, данные: {web_app_data[:100]}")
+                await update.message.reply_text("❌ Ошибка формата данных от мини-приложения")
+                return
             
             if data.get('type') == 'faceid_video':
                 await update.message.reply_text("🔍 Получено видео от Face ID. Анализирую...")
