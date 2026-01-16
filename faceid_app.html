@@ -173,11 +173,13 @@
         async function startRecording() {
             try {
                 // Запрашиваем доступ к камере (предпочтительно фронтальная)
+                // Уменьшаем разрешение для меньшего размера файла
                 const constraints = {
                     video: {
                         facingMode: 'user', // Фронтальная камера
-                        width: { ideal: 640 },
-                        height: { ideal: 480 }
+                        width: { ideal: 320, max: 480 }, // Уменьшено для меньшего размера
+                        height: { ideal: 240, max: 360 },
+                        frameRate: { ideal: 15, max: 20 } // Низкий FPS для меньшего размера
                     },
                     audio: false
                 };
@@ -186,10 +188,10 @@
                 videoPreview.srcObject = stream;
                 videoPreview.style.display = 'block';
                 
-                // Настраиваем MediaRecorder
+                // Настраиваем MediaRecorder с низким битрейтом для меньшего размера
                 const options = {
                     mimeType: 'video/webm;codecs=vp9',
-                    videoBitsPerSecond: 2500000
+                    videoBitsPerSecond: 500000 // Низкий битрейт (500 kbps) для меньшего размера
                 };
                 
                 // Fallback на другие форматы
@@ -299,20 +301,57 @@
             try {
                 const blob = new Blob(recordedChunks, { type: 'video/webm' });
                 
+                // Проверяем размер видео (Telegram Web App имеет ограничение ~64KB для sendData)
+                const maxSize = 60 * 1024; // 60KB для безопасности
+                
+                if (blob.size > maxSize) {
+                    showStatus('⚠️ Видео слишком большое. Сжимаю...', '');
+                    // Пытаемся сжать видео или отправить только первые кадры
+                    // Для простоты - отправляем сообщение об ошибке
+                    showStatus('❌ Видео слишком большое для отправки. Попробуйте записать короче.', 'error');
+                    return;
+                }
+                
                 // Конвертируем в base64 для отправки через Telegram Web App API
                 const reader = new FileReader();
+                
+                reader.onerror = (error) => {
+                    console.error('Ошибка чтения файла:', error);
+                    showStatus('❌ Ошибка чтения видео. Попробуйте еще раз.', 'error');
+                };
+                
                 reader.onloadend = async () => {
                     try {
                         const base64data = reader.result;
                         
+                        if (!base64data) {
+                            throw new Error('Не удалось прочитать видео');
+                        }
+                        
+                        // Убираем префикс data:video/webm;base64,
+                        const base64Video = base64data.includes(',') 
+                            ? base64data.split(',')[1] 
+                            : base64data;
+                        
+                        // Проверяем размер base64 данных
+                        if (base64Video.length > maxSize * 1.33) { // base64 увеличивает размер на ~33%
+                            showStatus('❌ Видео слишком большое для отправки. Попробуйте записать короче.', 'error');
+                            return;
+                        }
+                        
                         // Отправляем через Telegram Web App API
-                        // sendData отправляет данные боту, который обработает их через WebAppData
                         const dataToSend = JSON.stringify({
                             type: 'faceid_video',
-                            video: base64data.split(',')[1], // Убираем префикс data:video/webm;base64,
+                            video: base64Video,
                             timestamp: Date.now()
                         });
                         
+                        // Проверяем что Telegram Web App API доступен
+                        if (!tg || !tg.sendData) {
+                            throw new Error('Telegram Web App API не доступен');
+                        }
+                        
+                        // Отправляем данные
                         tg.sendData(dataToSend);
                         
                         showStatus('✅ Видео отправлено! Ожидайте результатов проверки...', 'success');
@@ -323,7 +362,7 @@
                         }, 2000);
                     } catch (error) {
                         console.error('Ошибка отправки:', error);
-                        showStatus('❌ Ошибка отправки видео. Попробуйте еще раз.', 'error');
+                        showStatus('❌ Ошибка отправки: ' + error.message, 'error');
                     }
                 };
                 
@@ -331,7 +370,7 @@
                 
             } catch (error) {
                 console.error('Ошибка отправки видео:', error);
-                showStatus('❌ Ошибка отправки видео. Попробуйте еще раз.', 'error');
+                showStatus('❌ Ошибка: ' + (error.message || 'Неизвестная ошибка'), 'error');
             }
         }
         
