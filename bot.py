@@ -644,14 +644,14 @@ def main():
                 await update.message.reply_text("❌ Ошибка формата данных от мини-приложения")
                 return
             
-            # Поддерживаем как старый формат (type), так и новый (t)
+            # Поддерживаем разные форматы: 'type'/'t' и значения 'faceid_video'/'v'
             data_type = data.get('type') or data.get('t')
-            if data_type == 'faceid_video':
+            if data_type == 'faceid_video' or data_type == 'v':
                 await update.message.reply_text("🔍 Получено видео от Face ID. Анализирую...")
                 
-                # Декодируем base64 видео (поддерживаем как 'video', так и 'v')
+                # Декодируем base64 видео (поддерживаем 'video', 'v', 'd')
                 import base64
-                video_base64 = data.get('video') or data.get('v')
+                video_base64 = data.get('video') or data.get('v') or data.get('d')
                 if not video_base64:
                     await update.message.reply_text("❌ Видео не получено")
                     return
