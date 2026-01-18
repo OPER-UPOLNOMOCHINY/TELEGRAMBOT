@@ -4,7 +4,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <!-- CSP для Telegram Web App: разрешаем необходимые источники -->
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self' https://telegram.org; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://telegram.org; style-src 'self' 'unsafe-inline'; media-src 'self' blob:; connect-src 'self' https://telegram.org; frame-src 'self' https://telegram.org; worker-src 'self' blob:;">
+    <!-- Примечание: GitHub Pages может применять свою CSP через HTTP заголовки, которая переопределяет этот мета-тег -->
+    <!-- Если CSP ошибки продолжаются, рассмотрите использование другого хостинга (Netlify) или локального сервера с ngrok -->
+    <meta http-equiv="Content-Security-Policy" content="default-src * 'unsafe-inline' 'unsafe-eval' data: blob:; script-src * 'unsafe-inline' 'unsafe-eval' data: blob:; style-src * 'unsafe-inline'; img-src * data: blob:; media-src * data: blob:; connect-src *; font-src * data:; frame-src *;">
     <title>Face ID Verification</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <style>
