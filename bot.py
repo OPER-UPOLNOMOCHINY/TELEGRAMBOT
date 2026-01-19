@@ -119,12 +119,15 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "• Есть ли на фото монитор\n"
         "• Есть ли лицо внутри монитора\n"
         "• Размер лица (большое лицо = фейк)\n"
+        "• Блики в глазах (реальные глаза имеют блики)\n"
+        "• Освещение (естественное vs неестественное)\n"
+        "• Моргание (для видео - реальное лицо моргает)\n"
         "• Если лицо внутри монитора - это ФЕЙК! 🚨\n\n"
         "🔧 Выберите метод детекции:\n"
-        "• /method_standard - Стандартный метод (монитор + движение)\n"
+        "• /method_standard - Стандартный метод (монитор + антиспуфинг)\n"
         "• /method_deeppixbis - DeepPixBis (пиксельная детекция)\n\n"
         "После анализа я спрошу правильно ли я определил, "
-        "и сохраню данные для обучения модели (включая информацию о позе головы)."
+        "и сохраню данные для обучения модели."
     )
     
     # Создаем кнопки для выбора метода и Face ID
@@ -199,8 +202,8 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
             # Используем DeepPixBis
             analysis_result = detection_engine.analyze_image_with_deeppixbis(temp_image_path)
         else:
-            # Используем стандартный метод (без head pose для ускорения)
-            analysis_result = detection_engine.analyze_image(temp_image_path, use_head_pose=False)
+            # Используем стандартный метод (без head pose для ускорения, но с антиспуфингом)
+            analysis_result = detection_engine.analyze_image(temp_image_path, use_head_pose=False, use_anti_spoofing=True)
         
         # Анализ движения головы отключен для ускорения
         head_movement_analysis = None
@@ -264,6 +267,33 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     elif len(analysis_result['face_in_monitor']) == 0:
                         result_message += f"• Лицо не находится внутри детектированного монитора - подозрительно!\n"
                     result_message += "\n"
+        
+        # Показываем результаты антиспуфинга (блики в глазах, освещение)
+        anti_spoofing_results = analysis_result.get('anti_spoofing_results', {})
+        if anti_spoofing_results:
+            result_message += "🔍 Анализ антиспуфинга:\n"
+            for face_idx, face in enumerate(analysis_result.get('faces', [])):
+                if 'eye_reflections' in face:
+                    eye_reflections = face['eye_reflections']
+                    if 'error' not in eye_reflections:
+                        has_reflections = eye_reflections.get('has_reflections', False)
+                        reflection_score = eye_reflections.get('reflection_score', 0) * 100
+                        result_message += f"\n👤 Лицо {face_idx + 1}:\n"
+                        result_message += f"• Блики в глазах: {'✅ Да' if has_reflections else '⚠️ Нет'}\n"
+                        result_message += f"• Score бликов: {reflection_score:.1f}%\n"
+                        if not has_reflections:
+                            result_message += f"  ⚠️ Отсутствие бликов может указывать на изображение на экране\n"
+                
+                if 'lighting' in face:
+                    lighting = face['lighting']
+                    if 'error' not in lighting:
+                        is_consistent = lighting.get('is_consistent', True)
+                        lighting_score = lighting.get('lighting_score', 0) * 100
+                        result_message += f"• Освещение: {'✅ Естественное' if is_consistent else '⚠️ Неестественное'}\n"
+                        result_message += f"• Score освещения: {lighting_score:.1f}%\n"
+                        if not is_consistent:
+                            result_message += f"  ⚠️ Неестественное освещение может указывать на фейк\n"
+            result_message += "\n"
         
         # Анализ блочных артефактов отключен
         # if analysis_result.get('block_artifacts_analysis'):
@@ -602,8 +632,31 @@ def main():
                     result_message += "• Голова не двигается естественно!\n\n"
                 else:
                     result_message += "• Лицо обнаружено внутри монитора\n\n"
+                
+                # Показываем результаты моргания
+                blinking_analysis = video_analysis.get('blinking_analysis')
+                if blinking_analysis:
+                    is_blinking = blinking_analysis.get('is_blinking', False)
+                    is_natural = blinking_analysis.get('is_natural', True)
+                    blink_count = blinking_analysis.get('blink_count', 0)
+                    blink_rate = blinking_analysis.get('blink_rate', 0)
+                    
+                    result_message += "👁️ Анализ моргания:\n"
+                    result_message += f"• Моргание обнаружено: {'✅ Да' if is_blinking else '⚠️ Нет'}\n"
+                    if is_blinking:
+                        result_message += f"• Количество морганий: {blink_count}\n"
+                        result_message += f"• Частота: {blink_rate:.2f} раз/сек\n"
+                        result_message += f"• Естественность: {'✅ Естественное' if is_natural else '⚠️ Неестественное'}\n"
+                    else:
+                        result_message += "• ⚠️ Отсутствие моргания может указывать на статичное изображение!\n"
+                    result_message += "\n"
             else:
                 result_message += "✅ Фейк не обнаружен\n"
+                
+                # Показываем положительные результаты антиспуфинга
+                blinking_analysis = video_analysis.get('blinking_analysis')
+                if blinking_analysis and blinking_analysis.get('is_blinking'):
+                    result_message += "✅ Моргание обнаружено - признак реального лица\n"
             
             await update.message.reply_text(result_message)
             
@@ -714,9 +767,21 @@ def main():
                     else:
                         result_message += "• Лицо обнаружено внутри монитора\n"
                         result_message += "• Или обнаружено подозрительно большое лицо\n\n"
+                    
+                    # Показываем результаты моргания для Face ID
+                    blinking_analysis = video_analysis.get('blinking_analysis')
+                    if blinking_analysis:
+                        is_blinking = blinking_analysis.get('is_blinking', False)
+                        if not is_blinking:
+                            result_message += "⚠️ Моргание не обнаружено - возможно статичное изображение!\n\n"
                 else:
                     result_message += "✅ Фейк не обнаружен\n"
                     result_message += "✅ Лицо выглядит реальным\n"
+                    
+                    # Показываем положительные результаты антиспуфинга
+                    blinking_analysis = video_analysis.get('blinking_analysis')
+                    if blinking_analysis and blinking_analysis.get('is_blinking'):
+                        result_message += "✅ Моргание обнаружено - признак реального лица\n"
                 
                 await update.message.reply_text(result_message)
                 
